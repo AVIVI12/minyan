@@ -1,308 +1,176 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>מניין לייב - טיימר הלכתי</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-    <style>
-        .screen { display: none; min-height: 100vh; }
-        .screen.active { display: flex; flex-direction: column; }
-        #map { height: 180px; width: 100%; border-radius: 20px; z-index: 10; border: 1px solid #ddd; }
-        .timer-glow { text-shadow: 0 0 10px rgba(59, 130, 246, 0.5); }
-        .warning-strip { animation: slideDown 0.4s ease-out; }
-        @keyframes slideDown { from { transform: translateY(-100%); } to { transform: translateY(0); } }
-    </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MinyanLive PRO</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<style>
+.screen{display:none;min-height:100vh}
+.screen.active{display:flex;flex-direction:column}
+#map{height:180px;border-radius:20px}
+</style>
 </head>
-<body class="bg-gray-100 text-slate-900 font-sans">
+<body class="bg-gray-100">
+<div class="max-w-md mx-auto bg-white min-h-screen flex flex-col">
 
-    <div class="max-w-md mx-auto bg-white shadow-2xl min-h-screen relative flex flex-col">
-        
-        <!-- Header -->
-        <header class="bg-slate-900 p-4 text-white flex justify-between items-center shadow-lg">
-            <div>
-                <h1 class="font-black italic text-xl tracking-tighter">MinyanLive</h1>
-                <p id="live-clock" class="text-blue-400 font-mono text-[10px] font-bold">00:00:00</p>
-            </div>
-            <div id="header-loc" class="text-[10px] text-gray-500 text-left">מאתר מיקום...</div>
-        </header>
+<header class="bg-black text-white p-3 flex justify-between">
+<div>
+<b>MinyanLive PRO</b>
+<div id="clock" class="text-xs"></div>
+</div>
+<div id="loc" class="text-xs">טוען מיקום...</div>
+</header>
 
-        <!-- מסך 1: רישום -->
-        <section id="screen-auth" class="screen p-8 text-center justify-center space-y-6">
-            <div class="text-6xl animate-bounce">🕍</div>
-            <h1 class="text-3xl font-black text-slate-800">ברוך הבא!</h1>
-            <p class="text-gray-500">נרשמים פעם אחת ומוצאים מניין תמיד</p>
-            <input type="text" id="reg-name" placeholder="שם מלא" class="w-full p-4 border rounded-2xl bg-gray-50 outline-none focus:ring-2 ring-blue-500 text-center text-lg">
-            <input type="tel" id="reg-phone" placeholder="מס' טלפון" class="w-full p-4 border rounded-2xl bg-gray-50 outline-none focus:ring-2 ring-blue-500 text-center text-lg">
-            <button onclick="register()" class="w-full bg-blue-600 text-white font-bold py-4 rounded-2xl shadow-xl text-xl">הצטרפות</button>
-        </section>
+<section id="auth" class="screen active p-6 space-y-3">
+<input id="name" placeholder="שם" class="p-3 border w-full" />
+<input id="phone" placeholder="טלפון" class="p-3 border w-full" />
+<button onclick="register()" class="bg-blue-600 text-white p-3 w-full">כניסה</button>
+</section>
 
-        <!-- מסך 2: בחירת תפילה + טיימר -->
-        <section id="screen-select" class="screen p-5 space-y-6">
-            <!-- טיימר מרכזי -->
-            <div class="bg-slate-900 p-6 rounded-[30px] text-white text-center shadow-2xl relative overflow-hidden">
-                <div class="absolute top-0 left-0 w-full h-full bg-blue-500/5 pointer-events-none"></div>
-                <p id="timer-label" class="text-blue-400 text-xs font-bold mb-1 opacity-80 uppercase tracking-widest">טוען יעד קרוב...</p>
-                <div id="timer-countdown" class="text-5xl font-black font-mono tracking-tighter timer-glow">00:00:00</div>
-                
-                <button onclick="toggleZmanim()" class="mt-4 text-[10px] bg-white/10 px-4 py-1.5 rounded-full hover:bg-white/20 transition">זמני היום המלאים ▼</button>
-                
-                <div id="zmanim-list" class="hidden mt-4 space-y-2 text-right border-t border-white/10 pt-4 px-2">
-                    <!-- זמנים יוזרקו לכאן -->
-                </div>
-            </div>
+<section id="main" class="screen p-3 space-y-3">
+<div id="map"></div>
+<button onclick="createMinyan()" class="bg-green-600 text-white p-2">פתח מניין</button>
+<div id="list"></div>
+</section>
 
-            <div class="grid grid-cols-1 gap-3">
-                <h3 class="font-bold text-lg px-2">לאיזו תפילה תרצה להצטרף?</h3>
-                <button onclick="startMinyanLook('שחרית')" class="w-full p-5 bg-white border-2 border-slate-100 rounded-3xl text-xl font-black flex justify-between items-center px-8 hover:border-orange-400 transition group">
-                    <span>🌅 שחרית</span>
-                    <span class="text-sm opacity-20 group-hover:opacity-100">→</span>
-                </button>
-                <button onclick="startMinyanLook('מנחה')" class="w-full p-5 bg-white border-2 border-slate-100 rounded-3xl text-xl font-black flex justify-between items-center px-8 hover:border-blue-400 transition group">
-                    <span>☀️ מנחה</span>
-                    <span class="text-sm opacity-20 group-hover:opacity-100">→</span>
-                </button>
-                <button onclick="startMinyanLook('ערבית')" class="w-full p-5 bg-white border-2 border-slate-100 rounded-3xl text-xl font-black flex justify-between items-center px-8 hover:border-indigo-400 transition group">
-                    <span>🌙 ערבית</span>
-                    <span class="text-sm opacity-20 group-hover:opacity-100">→</span>
-                </button>
-            </div>
-        </section>
+</div>
 
-        <!-- מסך 3: הלובי המרכזי -->
-        <section id="screen-main" class="screen flex-grow">
-            <!-- פס אזהרה אם הזמן בעייתי -->
-            <div id="time-warning" class="hidden warning-strip bg-amber-100 border-b border-amber-200 p-2 text-center text-[11px] font-bold text-amber-700">
-                ⚠️ שימו לב: התפילה כרגע מחוץ לזמני ההלכה המומלצים
-            </div>
+<script>
+const firebaseConfig={apiKey:"AIza...",projectId:"munyan-3d2dc"};
+firebase.initializeApp(firebaseConfig);
+const db=firebase.firestore();
 
-            <div class="bg-blue-600 p-3 text-white flex justify-between items-center shadow-lg">
-                <button onclick="showScreen('screen-select')" class="bg-blue-700 px-3 py-1 rounded-full text-[10px]">⬅️ חזרה</button>
-                <h2 id="current-prayer-title" class="font-black text-lg">שחרית</h2>
-                <div class="w-10"></div>
-            </div>
+let user=JSON.parse(localStorage.getItem('u'))||null;
+let pos=null;
+let map,userMarker;
 
-            <div class="p-4 space-y-4 overflow-y-auto pb-24">
-                <div id="map" class="shadow-inner"></div>
-                <div class="flex justify-between items-center px-1">
-                    <h3 class="font-bold text-slate-700">התארגנויות בסביבה</h3>
-                    <button onclick="createNewMinyan()" class="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg">+ פתח מניין</button>
-                </div>
-                <div id="minyan-list" class="space-y-4"></div>
-            </div>
-        </section>
-    </div>
+setInterval(()=>{
+document.getElementById('clock').innerText=new Date().toLocaleTimeString('he-IL');
+},1000);
 
-    <script>
-        const firebaseConfig = {
-            apiKey: "AIzaSyAg0jP2EHnCkNJFxyaaY-CrHDjntYm4Oao",
-            authDomain: "munyan-3d2dc.firebaseapp.com",
-            projectId: "munyan-3d2dc",
-            storageBucket: "munyan-3d2dc.firebasestorage.app",
-            messagingSenderId: "145100344366",
-            appId: "1:145100344366:web:daef855ba6e695c4c923bf"
-        };
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
+if(user){init();}
 
-        let user = JSON.parse(localStorage.getItem('mUser')) || null;
-        let userPos = null;
-        let zmanim = null;
-        let map = null;
-        let activeTimer = null;
+function register(){
+const name=document.getElementById('name').value;
+const phone=document.getElementById('phone').value;
+if(!name||!phone) return alert('מלא הכל');
+user={name,phone};
+localStorage.setItem('u',JSON.stringify(user));
+init();
+}
 
-        // שעון חי בראש המסך
-        setInterval(() => {
-            document.getElementById('live-clock').innerText = new Date().toLocaleTimeString('he-IL');
-        }, 1000);
+function init(){
+navigator.geolocation.getCurrentPosition(p=>{
+pos={lat:p.coords.latitude,lng:p.coords.longitude};
+document.getElementById('loc').innerText='📍 נמצא';
+show('main');
+initMap();
+listen();
+},()=>alert('חייבים מיקום'));
+}
 
-        window.onload = () => {
-            if (!user) showScreen('screen-auth');
-            else getInitialLocation();
-        };
+function initMap(){
+map=L.map('map').setView([pos.lat,pos.lng],15);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+userMarker=L.marker([pos.lat,pos.lng]).addTo(map);
+}
 
-        function getInitialLocation() {
-            navigator.geolocation.getCurrentPosition(async pos => {
-                userPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-                document.getElementById('header-loc').innerText = `📍 מיקומך זוהה`;
-                await loadZmanim();
-                showScreen('screen-select');
-                startTimerLoop();
-            });
-        }
+function show(id){
+document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+document.getElementById(id).classList.add('active');
+}
 
-        async function loadZmanim() {
-            const res = await fetch(`https://www.hebcal.com/zmanim?cfg=json&latitude=${userPos.lat}&longitude=${userPos.lng}`);
-            const data = await res.json();
-            zmanim = data.times;
-            renderZmanimList();
-        }
+async function createMinyan(){
+const exists=await db.collection('minyanim').where('phone','==',user.phone).get();
+if(!exists.empty) return alert('כבר פתחת');
 
-        function renderZmanimList() {
-            const listContainer = document.getElementById('zmanim-list');
-            const labels = {
-                sunrise: "🌅 הנץ החמה",
-                sofZmanShma: "📜 סוף זמן ק''ש",
-                sofZmanTfilla: "🕍 סוף זמן תפילה",
-                chatzot: "☀️ חצות היום",
-                minchaGedola: "☀️ מנחה גדולה",
-                sunset: "🌇 שקיעה",
-                tzeit7085deg: "🌙 צאת הכוכבים"
-            };
-            
-            listContainer.innerHTML = Object.entries(labels).map(([key, label]) => `
-                <div class="flex justify-between text-[11px] opacity-80">
-                    <span class="font-bold text-blue-300">${new Date(zmanim[key]).toLocaleTimeString('he-IL', {hour:'2-digit', minute:'2-digit'})}</span>
-                    <span>${label}</span>
-                </div>
-            `).join('');
-        }
+const place=await getPlaceName(pos.lat,pos.lng);
 
-        function startTimerLoop() {
-            if(activeTimer) clearInterval(activeTimer);
-            activeTimer = setInterval(updateNextZmanTimer, 1000);
-        }
+await db.collection('minyanim').add({
+creator:user.name,
+phone:user.phone,
+lat:pos.lat,lng:pos.lng,
+place,
+participants:[user],
+createdAt:new Date()
+});
+}
 
-        function updateNextZmanTimer() {
-            const now = new Date();
-            const relevantZmanim = [
-                { name: "סוף זמן ק''ש", time: new Date(zmanim.sofZmanShma) },
-                { name: "סוף זמן תפילה", time: new Date(zmanim.sofZmanTfilla) },
-                { name: "חצות היום", time: new Date(zmanim.chatzot) },
-                { name: "מנחה גדולה", time: new Date(zmanim.minchaGedola) },
-                { name: "שקיעה", time: new Date(zmanim.sunset) },
-                { name: "צאת הכוכבים", time: new Date(zmanim.tzeit7085deg) }
-            ];
+function listen(){
+db.collection('minyanim').onSnapshot(snap=>{
+const arr=[];
+snap.forEach(d=>arr.push({id:d.id,...d.data()}));
+arr.sort((a,b)=>dist(a)-dist(b));
+render(arr);
+});
+}
 
-            const next = relevantZmanim.find(z => z.time > now);
-            if (!next) {
-                document.getElementById('timer-label').innerText = "עבור ליום הבא";
-                document.getElementById('timer-countdown').innerText = "00:00:00";
-                return;
-            }
+function render(arr){
+const el=document.getElementById('list');
+el.innerHTML='';
+arr.forEach(m=>{
+const d=dist(m);
+if(d>5) return;
+const full=m.participants.length>=10;
+const color=full?'green':m.participants.length>=6?'orange':'red';
+const btn=full?'מלא':`הצטרף`;
 
-            const diff = next.time - now;
-            const h = Math.floor(diff / 3600000).toString().padStart(2, '0');
-            const m = Math.floor((diff % 3600000) / 60000).toString().padStart(2, '0');
-            const s = Math.floor((diff % 60000) / 1000).toString().padStart(2, '0');
+el.innerHTML+=`<div class="border p-3">
+<b>${m.creator}</b>
+<div>${m.place}</div>
+<div>${Math.round(d*1000)} מטר</div>
+<div>${m.participants.length}/10</div>
+<button onclick="join('${m.id}')" ${full?'disabled':''} class="bg-${color}-500 text-white p-2">${btn}</button>
+</div>`;
 
-            document.getElementById('timer-label').innerText = next.name + " בעוד:";
-            document.getElementById('timer-countdown').innerText = `${h}:${m}:${s}`;
-        }
+if(m.participants.length==9) notify('חסר אחד לעשירי!');
+});
+}
 
-        function toggleZmanim() {
-            const list = document.getElementById('zmanim-list');
-            list.classList.toggle('hidden');
-        }
+function join(id){
+db.collection('minyanim').doc(id).get().then(doc=>{
+const m=doc.data();
+if(m.participants.length>=10) return alert('מלא');
 
-        function startMinyLook(prayer) {
-            const now = new Date();
-            const warning = document.getElementById('time-warning');
-            warning.classList.add('hidden');
+const exists=m.participants.find(p=>p.phone===user.phone);
+if(exists) return;
 
-            // בדיקת זמנים להצגת אזהרה
-            if (prayer === 'שחרית' && (now > new Date(zmanim.sofZmanTfilla) || now < new Date(zmanim.sunrise))) {
-                warning.innerText = "⚠️ שים לב: זמן שחרית עבר או טרם התחיל";
-                warning.classList.remove('hidden');
-            }
-            if (prayer === 'מנחה' && (now < new Date(zmanim.minchaGedola) || now > new Date(zmanim.sunset))) {
-                warning.innerText = "⚠️ שים לב: טרם הגיע זמן מנחה או שכבר שקעה החמה";
-                warning.classList.remove('hidden');
-            }
+ db.collection('minyanim').doc(id).update({
+ participants:firebase.firestore.FieldValue.arrayUnion(user)
+ });
+});
+}
 
-            document.getElementById('current-prayer-title').innerText = prayer;
-            showScreen('screen-main');
-            initMap();
-            listenToFirebase(prayer);
-        }
+function dist(m){
+const R=6371;
+const dLat=(m.lat-pos.lat)*Math.PI/180;
+const dLon=(m.lng-pos.lng)*Math.PI/180;
+const a=Math.sin(dLat/2)**2+Math.cos(pos.lat*Math.PI/180)*Math.cos(m.lat*Math.PI/180)*Math.sin(dLon/2)**2;
+return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
 
-        // שאר הפונקציות (מפה, פיירבייס, רישום) נשארות זהות אך משופרות עיצובית...
-        function initMap() {
-            setTimeout(() => {
-                    if (!map) {
-                        map = L.map('map').setView([userPos.lat, userPos.lng], 15);
-                        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-                    } else {
-                        map.setView([userPos.lat, userPos.lng], 15);
-                    }
-                    L.marker([userPos.lat, userPos.lng]).addTo(map).bindPopup("אתה").openPopup();
-            }, 200);
-        }
+async function getPlaceName(lat,lng){
+try{
+const res=await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
+const data=await res.json();
+return data.name||data.display_name||'מיקום';
+}catch{return 'מיקום';}
+}
 
-        function listenToFirebase(prayer) {
-            const hourAgo = new Date(Date.now() - 3600000);
-            db.collection("active_minyans").where("prayer", "==", prayer).where("createdAt", ">", hourAgo)
-                .onSnapshot(snap => {
-                    const list = document.getElementById('minyan-list');
-                    list.innerHTML = "";
-                    if(snap.empty) list.innerHTML = '<p class="text-center text-gray-400 py-10 italic">אין התארגנויות כרגע. תהיה הראשון ופתח מניין!</p>';
-                    snap.forEach(doc => renderCard(doc.id, doc.data()));
-                });
-        }
+// Notifications
+function notify(text){
+if(Notification.permission==='granted'){
+new Notification(text);
+}else if(Notification.permission!=='denied'){
+Notification.requestPermission();
+}
+}
 
-        function renderCard(id, data) {
-            const dist = getDist(userPos.lat, userPos.lng, data.lat, data.lng);
-            if (dist > 5) return; // לא להציג רחוקים מ-5 ק"מ
-
-            const isJoined = data.participants.some(p => p.phone === user.phone);
-            document.getElementById('minyan-list').innerHTML += `
-                <div class="bg-white border rounded-2xl p-5 shadow-sm border-r-8 border-blue-600">
-                    <div class="flex justify-between items-start mb-4">
-                        <div>
-                            <h4 class="font-black text-slate-800 text-lg">${data.creator}</h4>
-                            <p class="text-[10px] text-blue-500 font-bold uppercase tracking-wide">📍 ${Math.round(dist*1000)} מטר ממך</p>
-                        </div>
-                        <div class="text-3xl font-black text-blue-600">${data.participants.length}<span class="text-xs text-gray-400 font-normal">/10</span></div>
-                    </div>
-                    <div class="space-y-1 mb-4">
-                        ${data.participants.map(p => `<div class="flex justify-between text-[11px] bg-slate-50 p-1.5 px-3 rounded-lg"><span>👤 ${p.name}</span><a href="tel:${p.phone}" class="text-blue-600 font-bold underline">📞 התקשר</a></div>`).join('')}
-                    </div>
-                    ${!isJoined ? `<button onclick="joinMinyan('${id}')" class="w-full bg-blue-600 text-white font-black py-3 rounded-xl shadow-lg active:scale-95 transition">אני מצטרף לעשירי!</button>` : `<div class="bg-green-50 text-green-700 text-center py-2 rounded-xl font-bold text-sm">אתה רשום למניין ✅</div>`}
-                </div>
-            `;
-        }
-
-        function showScreen(id) {
-            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-            document.getElementById(id).classList.add('active');
-        }
-
-        function register() {
-            const name = document.getElementById('reg-name').value;
-            const phone = document.getElementById('reg-phone').value;
-            if(!name || !phone) return alert("אנא מלא שם וטלפון");
-            user = { name, phone };
-            localStorage.setItem('mUser', JSON.stringify(user));
-            getInitialLocation();
-        }
-
-        async function createNewMinyan() {
-            const prayer = document.getElementById('current-prayer-title').innerText;
-            db.collection("active_minyans").add({
-                prayer, creator: user.name, phone: user.phone,
-                lat: userPos.lat, lng: userPos.lng,
-                participants: [{ name: user.name, phone: user.phone }],
-                createdAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
-        }
-
-        function joinMinyan(id) {
-            db.collection("active_minyans").doc(id).update({
-                participants: firebase.firestore.FieldValue.arrayUnion({ name: user.name, phone: user.phone })
-            });
-        }
-
-        function getDist(lat1, lon1, lat2, lon2) {
-            const R = 6371;
-            const dLat = (lat2-lat1) * Math.PI/180;
-            const dLon = (lon2-lon1) * Math.PI/180;
-            const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2) * Math.sin(dLon/2);
-            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-        }
-    </script>
+</script>
 </body>
 </html>
