@@ -7,12 +7,11 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 </head>
-<body class="bg-gray-100 font-sans">
-<div class="max-w-md mx-auto bg-white min-h-screen flex flex-col rounded-3xl shadow-xl overflow-hidden">
+<body class="bg-gradient-to-b from-gray-50 to-gray-200 font-sans">
+<div class="max-w-md mx-auto bg-white min-h-screen flex flex-col rounded-3xl shadow-2xl overflow-hidden">
 
 <header class="p-4 bg-white shadow flex justify-between items-center">
 <h1 class="text-2xl font-black">מנין.</h1>
@@ -34,13 +33,19 @@
 
 <section id="main" class="hidden p-3 space-y-3 flex-1 overflow-y-auto">
 <div id="map" style="height:150px" class="rounded-2xl"></div>
-<button onclick="addShul()" class="bg-green-500 text-white p-2 rounded-xl">+ הוסף בית כנסת</button>
-<button onclick="createMinyan()" class="bg-blue-500 text-white p-2 rounded-xl">+ פתח מניין</button>
+
+<div class="flex gap-2">
+<button onclick="addShul()" class="flex-1 bg-green-500 text-white p-2 rounded-xl">+ בית כנסת</button>
+<button onclick="createMinyan()" class="flex-1 bg-blue-500 text-white p-2 rounded-xl">+ מניין</button>
+</div>
+
 <div id="list"></div>
 
 <div class="bg-black text-white p-3 rounded-2xl text-center">
 <div id="timerLabel" class="text-xs"></div>
 <div id="timer" class="text-2xl font-mono"></div>
+<button onclick="toggleZmanim()" class="text-xs mt-2">הצג את כל זמני היום ▼</button>
+<div id="zmanim" class="hidden text-xs mt-2"></div>
 </div>
 </section>
 
@@ -52,22 +57,17 @@ firebase.initializeApp(firebaseConfig);
 const db=firebase.firestore();
 
 let user=JSON.parse(localStorage.getItem('user'))||null;
-let pos=null,currentPrayer=null,map;
+let pos=null,currentPrayer=null,map,zmanim;
 
 if(user) init();
 
 function login(){
-const name=document.getElementById('name').value;
-const phone=document.getElementById('phone').value;
-user={name,phone};
+user={name:document.getElementById('name').value,phone:document.getElementById('phone').value};
 localStorage.setItem('user',JSON.stringify(user));
 init();
 }
 
-function logout(){
-localStorage.removeItem('user');
-location.reload();
-}
+function logout(){localStorage.removeItem('user');location.reload();}
 
 function init(){
 document.getElementById('auth').classList.add('hidden');
@@ -95,23 +95,38 @@ listen();
 function listen(){
 db.collection('shuls').onSnapshot(snap=>{
 let html='';
+
 snap.forEach(d=>{
 const s=d.data();
 const dist=getDist(pos.lat,pos.lng,s.lat,s.lng);
 if(dist>5) return;
+
 html+=`<div class="bg-gray-50 p-3 rounded-xl mb-2">
 <b>${s.name}</b>
 <div>${Math.round(dist*1000)} מטר</div>
 <div>${s.times?.[currentPrayer]||'אין זמן'}</div>
+<button onclick="editShul('${d.id}')" class="text-xs text-blue-500">ערוך</button>
+<button onclick="deleteShul('${d.id}')" class="text-xs text-red-500">מחק</button>
 </div>`;
 });
 
 // מניינים
-snap.forEach(d=>{
-const m=d.data();
-});
+ db.collection('minyanim').where('prayer','==',currentPrayer).onSnapshot(msnap=>{
+ msnap.forEach(doc=>{
+ const m=doc.data();
+ const dist=getDist(pos.lat,pos.lng,m.lat,m.lng);
+ if(dist>5) return;
 
-document.getElementById('list').innerHTML=html||'אין בתי כנסת באזור';
+ html+=`<div class="bg-blue-50 p-3 rounded-xl mb-2">
+ מניין (${m.people.length}/10)
+ <button onclick="join('${doc.id}')" class="text-xs bg-blue-500 text-white px-2">הצטרף</button>
+ </div>`;
+
+ if(m.people.length==9) notify('🔥 חסר אחד לעשירי');
+ });
+
+ document.getElementById('list').innerHTML=html||'אין כלום באזור';
+ });
 });
 }
 
@@ -120,20 +135,37 @@ const name=prompt('שם בית כנסת');
 const time=prompt('זמן '+currentPrayer);
 if(!name) return;
 
-db.collection('shuls').add({
-name,
-lat:pos.lat,
-lng:pos.lng,
-times:{[currentPrayer]:time}
-});
+db.collection('shuls').add({name,lat:pos.lat,lng:pos.lng,times:{[currentPrayer]:time}});
+}
+
+function editShul(id){
+const time=prompt('עדכן זמן');
+db.collection('shuls').doc(id).update({[`times.${currentPrayer}`]:time});
+}
+
+function deleteShul(id){
+db.collection('shuls').doc(id).delete();
 }
 
 function createMinyan(){
+if(!currentPrayer) return alert('בחר תפילה קודם');
+
 db.collection('minyanim').add({
 lat:pos.lat,lng:pos.lng,
 prayer:currentPrayer,
 people:[user.name],
 createdAt:Date.now()
+});
+}
+
+function join(id){
+db.collection('minyanim').doc(id).get().then(doc=>{
+const m=doc.data();
+if(m.people.includes(user.name)||m.people.length>=10) return;
+
+db.collection('minyanim').doc(id).update({
+people:firebase.firestore.FieldValue.arrayUnion(user.name)
+});
 });
 }
 
@@ -145,28 +177,35 @@ const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180
 return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
 
-// זמנים
-let zmanim;
 async function loadZmanim(){
 const res=await fetch(`https://www.hebcal.com/zmanim?cfg=json&latitude=${pos.lat}&longitude=${pos.lng}`);
 const data=await res.json();
 zmanim=data.times;
+
+const zEl=document.getElementById('zmanim');
+zEl.innerHTML=Object.entries(zmanim).map(([k,v])=>`<div>${k}: ${new Date(v).toLocaleTimeString('he-IL')}</div>`).join('');
+
 setInterval(updateTimer,1000);
 }
 
 function updateTimer(){
 const now=new Date();
-const list=[
-{n:'שקיעה',t:new Date(zmanim.sunset)},
-{n:'צאת',t:new Date(zmanim.tzeit7085deg)}
-];
-const next=list.find(z=>z.t>now);
+const next=Object.entries(zmanim).map(([k,v])=>({k,t:new Date(v)})).find(z=>z.t>now);
 if(!next) return;
 const diff=next.t-now;
 const m=Math.floor(diff/60000);
 const s=Math.floor((diff%60000)/1000);
-document.getElementById('timerLabel').innerText=next.n;
+document.getElementById('timerLabel').innerText=next.k;
 document.getElementById('timer').innerText=`${m}:${s.toString().padStart(2,'0')}`;
+}
+
+function toggleZmanim(){
+document.getElementById('zmanim').classList.toggle('hidden');
+}
+
+function notify(t){
+if(Notification.permission==='granted') new Notification(t);
+else Notification.requestPermission();
 }
 
 </script>
