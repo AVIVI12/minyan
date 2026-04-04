@@ -5,47 +5,45 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>מנין.</title>
 <script src="https://cdn.tailwindcss.com"></script>
+<script src="https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_API_KEY&libraries=places"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 </head>
-<body class="bg-gradient-to-b from-blue-50 to-white">
+<body class="bg-gradient-to-br from-blue-100 via-white to-indigo-100 font-sans">
 
-<div class="max-w-md mx-auto min-h-screen bg-white shadow-xl rounded-3xl overflow-hidden flex flex-col">
+<div class="max-w-md mx-auto min-h-screen flex flex-col">
 
-<!-- HEADER -->
-<header class="bg-blue-100 text-blue-600 p-4 text-center font-black text-xl">מנין.</header>
+<header class="bg-white/80 backdrop-blur p-4 text-center shadow-lg rounded-b-3xl">
+<h1 class="text-3xl font-black text-blue-500">מנין.</h1>
+</header>
 
-<!-- AUTH -->
-<section id="auth" class="p-4 space-y-2">
-<input id="phone" placeholder="טלפון" class="p-3 border w-full rounded-xl" />
+<section id="auth" class="p-5 space-y-3">
+<input id="phone" placeholder="טלפון" class="p-3 border w-full rounded-2xl" />
 <div id="recaptcha"></div>
-<button onclick="sendCode()" class="bg-blue-500 text-white p-3 w-full rounded-xl">שלח קוד</button>
-<input id="code" placeholder="קוד" class="p-3 border w-full rounded-xl" />
-<button onclick="verifyCode()" class="bg-green-500 text-white p-3 w-full rounded-xl">אימות</button>
+<button onclick="sendCode()" class="bg-blue-500 text-white p-3 w-full rounded-2xl">שלח קוד</button>
+<input id="code" placeholder="קוד" class="p-3 border w-full rounded-2xl" />
+<button onclick="verifyCode()" class="bg-green-500 text-white p-3 w-full rounded-2xl">כניסה</button>
 </section>
 
-<!-- MAIN -->
-<section id="main" class="hidden flex-1 p-3 space-y-3 overflow-y-auto">
-<div id="map" class="h-40 rounded-2xl"></div>
-<div id="list"></div>
+<section id="main" class="hidden flex-1 p-3 space-y-3">
+<div id="map" class="h-44 rounded-3xl shadow"></div>
+<div id="list" class="space-y-3"></div>
 </section>
 
-<!-- FLOAT BUTTON -->
-<button onclick="openModal()" class="fixed bottom-6 right-6 bg-blue-500 text-white w-14 h-14 rounded-full text-2xl shadow-xl">+</button>
+<button onclick="openModal()" class="fixed bottom-6 right-6 bg-gradient-to-r from-blue-500 to-indigo-500 text-white w-16 h-16 rounded-full text-3xl shadow-2xl">+</button>
 
-<!-- MODAL -->
-<div id="modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center">
-<div class="bg-white p-4 rounded-2xl w-80 space-y-2">
-<input id="shulName" placeholder="שם בית כנסת" class="p-2 border w-full rounded" />
-<input id="address" placeholder="כתובת (חיפוש חובה)" class="p-2 border w-full rounded" />
-<input id="shacharit" placeholder="שחרית" class="p-2 border w-full rounded" />
-<input id="mincha" placeholder="מנחה" class="p-2 border w-full rounded" />
-<input id="arvit" placeholder="ערבית" class="p-2 border w-full rounded" />
-<button onclick="saveShul()" class="bg-blue-500 text-white w-full p-2 rounded">שמור</button>
-<button onclick="closeModal()" class="text-red-500 w-full">סגור</button>
+<div id="modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center">
+<div class="bg-white p-5 rounded-3xl w-80 space-y-3 shadow-2xl">
+<input id="shulName" placeholder="שם בית כנסת" class="p-3 border w-full rounded-xl" />
+<input id="address" placeholder="חפש כתובת" class="p-3 border w-full rounded-xl" />
+<input id="shacharit" placeholder="שחרית" class="p-2 border w-full rounded-xl" />
+<input id="mincha" placeholder="מנחה" class="p-2 border w-full rounded-xl" />
+<input id="arvit" placeholder="ערבית" class="p-2 border w-full rounded-xl" />
+<button onclick="saveShul()" class="bg-blue-500 text-white w-full p-3 rounded-xl">שמור</button>
+<button onclick="closeModal()" class="text-gray-400 w-full">ביטול</button>
 </div>
 </div>
 
@@ -55,22 +53,18 @@ firebase.initializeApp(firebaseConfig);
 const db=firebase.firestore();
 const auth=firebase.auth();
 
-let user,pos,map;
+let user,pos,map,autocomplete,selectedPlace;
 
 window.recaptchaVerifier=new firebase.auth.RecaptchaVerifier('recaptcha');
 
 function sendCode(){
-const phone=document.getElementById('phone').value;
-auth.signInWithPhoneNumber(phone,window.recaptchaVerifier)
+auth.signInWithPhoneNumber(document.getElementById('phone').value,window.recaptchaVerifier)
 .then(r=>window.confirmationResult=r);
 }
 
 function verifyCode(){
 confirmationResult.confirm(document.getElementById('code').value)
-.then(res=>{
-user=res.user;
-init();
-});
+.then(res=>{user=res.user;init();});
 }
 
 function init(){
@@ -96,44 +90,46 @@ let html='';
 
 snap.forEach(d=>{
 const s=d.data();
-const dist=getDist(pos.lat,pos.lng,s.lat,s.lng);
-if(dist>5) return;
-
-html+=`<div class="bg-blue-50 p-3 rounded-xl mb-2">
-<b>${s.name}</b>
-<div>${s.address}</div>
-<div>שחרית: ${s.shacharit}</div>
-<div>מנחה: ${s.mincha}</div>
-<div>ערבית: ${s.arvit}</div>
-<button onclick="createMinyan('${d.id}','שחרית')">+ שחרית</button>
-<button onclick="createMinyan('${d.id}','מנחה')">+ מנחה</button>
-<button onclick="createMinyan('${d.id}','ערבית')">+ ערבית</button>
+html+=`<div class="bg-white p-4 rounded-3xl shadow">
+<div class="font-bold text-lg">${s.name}</div>
+<div class="text-xs text-gray-400">${s.address}</div>
+<div class="text-sm">שחרית: ${s.shacharit}</div>
+<div class="text-sm">מנחה: ${s.mincha}</div>
+<div class="text-sm">ערבית: ${s.arvit}</div>
 </div>`;
 });
 
-document.getElementById('list').innerHTML=html||'אין בתי כנסת';
+ document.getElementById('list').innerHTML=html||'<div class="text-center text-gray-400">אין נתונים</div>';
 });
 }
 
-function openModal(){document.getElementById('modal').classList.remove('hidden');}
-function closeModal(){document.getElementById('modal').classList.add('hidden');}
+function openModal(){
+document.getElementById('modal').classList.remove('hidden');
+initAutocomplete();
+}
+
+function closeModal(){
+document.getElementById('modal').classList.add('hidden');
+}
+
+function initAutocomplete(){
+const input=document.getElementById('address');
+autocomplete=new google.maps.places.Autocomplete(input);
+autocomplete.addListener('place_changed',()=>{
+selectedPlace=autocomplete.getPlace();
+});
+}
 
 async function saveShul(){
-const address=document.getElementById('address').value;
-if(!address) return alert('חייב כתובת');
+if(!selectedPlace) return alert('בחר כתובת מהרשימה');
 
-// שימוש ב־Nominatim (תחליף לגוגל בסיסי)
-const res=await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${address}`);
-const data=await res.json();
-if(!data.length) return alert('כתובת לא נמצאה');
-
-const lat=parseFloat(data[0].lat);
-const lng=parseFloat(data[0].lon);
+const loc=selectedPlace.geometry.location;
 
 await db.collection('shuls').add({
 name:document.getElementById('shulName').value,
-address,
-lat,lng,
+address:selectedPlace.formatted_address,
+lat:loc.lat(),
+lng:loc.lng(),
 shacharit:document.getElementById('shacharit').value,
 mincha:document.getElementById('mincha').value,
 arvit:document.getElementById('arvit').value
@@ -141,30 +137,6 @@ arvit:document.getElementById('arvit').value
 
 closeModal();
 }
-
-function createMinyan(shulId,prayer){
-db.collection('minyanim').add({
-shulId,
-prayer,
-people:[user.uid],
-createdAt:Date.now()
-});
-push('נפתח מניין חדש');
-}
-
-function getDist(lat1,lon1,lat2,lon2){
-const R=6371;
-const dLat=(lat2-lat1)*Math.PI/180;
-const dLon=(lon2-lon1)*Math.PI/180;
-const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
-return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
-}
-
-// PUSH אמיתי (Service Worker חובה)
-function push(msg){
-if(Notification.permission==='granted') new Notification(msg);
-else Notification.requestPermission();
-}
-
 </script>
 </body>
+</html>
