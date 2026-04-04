@@ -7,75 +7,80 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 </head>
-<body class="bg-gradient-to-b from-gray-50 to-gray-200 font-sans">
-<div class="max-w-md mx-auto bg-white min-h-screen flex flex-col rounded-3xl shadow-2xl overflow-hidden">
+<body class="bg-gradient-to-b from-blue-50 to-white">
 
-<header class="p-4 bg-white shadow flex justify-between items-center">
-<h1 class="text-2xl font-black">מנין.</h1>
-<button onclick="logout()" class="text-xs text-gray-500">יציאה</button>
-</header>
+<div class="max-w-md mx-auto min-h-screen bg-white shadow-xl rounded-3xl overflow-hidden flex flex-col">
 
-<section id="auth" class="p-6 space-y-3">
-<input id="name" placeholder="שם" class="p-3 border w-full rounded-xl" />
+<!-- HEADER -->
+<header class="bg-blue-100 text-blue-600 p-4 text-center font-black text-xl">מנין.</header>
+
+<!-- AUTH -->
+<section id="auth" class="p-4 space-y-2">
 <input id="phone" placeholder="טלפון" class="p-3 border w-full rounded-xl" />
-<button onclick="login()" class="bg-blue-500 text-white p-3 w-full rounded-xl">התחברות</button>
+<div id="recaptcha"></div>
+<button onclick="sendCode()" class="bg-blue-500 text-white p-3 w-full rounded-xl">שלח קוד</button>
+<input id="code" placeholder="קוד" class="p-3 border w-full rounded-xl" />
+<button onclick="verifyCode()" class="bg-green-500 text-white p-3 w-full rounded-xl">אימות</button>
 </section>
 
-<section id="select" class="hidden p-4 space-y-3">
-<h2 class="font-bold">בחר תפילה</h2>
-<button onclick="loadPrayer('שחרית')" class="w-full p-3 bg-gray-100 rounded-xl">שחרית</button>
-<button onclick="loadPrayer('מנחה')" class="w-full p-3 bg-gray-100 rounded-xl">מנחה</button>
-<button onclick="loadPrayer('ערבית')" class="w-full p-3 bg-gray-100 rounded-xl">ערבית</button>
-</section>
-
-<section id="main" class="hidden p-3 space-y-3 flex-1 overflow-y-auto">
-<div id="map" style="height:150px" class="rounded-2xl"></div>
-
-<div class="flex gap-2">
-<button onclick="addShul()" class="flex-1 bg-green-500 text-white p-2 rounded-xl">+ בית כנסת</button>
-<button onclick="createMinyan()" class="flex-1 bg-blue-500 text-white p-2 rounded-xl">+ מניין</button>
-</div>
-
+<!-- MAIN -->
+<section id="main" class="hidden flex-1 p-3 space-y-3 overflow-y-auto">
+<div id="map" class="h-40 rounded-2xl"></div>
 <div id="list"></div>
-
-<div class="bg-black text-white p-3 rounded-2xl text-center">
-<div id="timerLabel" class="text-xs"></div>
-<div id="timer" class="text-2xl font-mono"></div>
-<button onclick="toggleZmanim()" class="text-xs mt-2">הצג את כל זמני היום ▼</button>
-<div id="zmanim" class="hidden text-xs mt-2"></div>
-</div>
 </section>
 
+<!-- FLOAT BUTTON -->
+<button onclick="openModal()" class="fixed bottom-6 right-6 bg-blue-500 text-white w-14 h-14 rounded-full text-2xl shadow-xl">+</button>
+
+<!-- MODAL -->
+<div id="modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center">
+<div class="bg-white p-4 rounded-2xl w-80 space-y-2">
+<input id="shulName" placeholder="שם בית כנסת" class="p-2 border w-full rounded" />
+<input id="address" placeholder="כתובת (חיפוש חובה)" class="p-2 border w-full rounded" />
+<input id="shacharit" placeholder="שחרית" class="p-2 border w-full rounded" />
+<input id="mincha" placeholder="מנחה" class="p-2 border w-full rounded" />
+<input id="arvit" placeholder="ערבית" class="p-2 border w-full rounded" />
+<button onclick="saveShul()" class="bg-blue-500 text-white w-full p-2 rounded">שמור</button>
+<button onclick="closeModal()" class="text-red-500 w-full">סגור</button>
+</div>
 </div>
 
 <script>
-const firebaseConfig={apiKey:"AIza...",projectId:"munyan-3d2dc"};
+const firebaseConfig={apiKey:"AIza...",authDomain:"munyan-3d2dc.firebaseapp.com",projectId:"munyan-3d2dc"};
 firebase.initializeApp(firebaseConfig);
 const db=firebase.firestore();
+const auth=firebase.auth();
 
-let user=JSON.parse(localStorage.getItem('user'))||null;
-let pos=null,currentPrayer=null,map,zmanim;
+let user,pos,map;
 
-if(user) init();
+window.recaptchaVerifier=new firebase.auth.RecaptchaVerifier('recaptcha');
 
-function login(){
-user={name:document.getElementById('name').value,phone:document.getElementById('phone').value};
-localStorage.setItem('user',JSON.stringify(user));
-init();
+function sendCode(){
+const phone=document.getElementById('phone').value;
+auth.signInWithPhoneNumber(phone,window.recaptchaVerifier)
+.then(r=>window.confirmationResult=r);
 }
 
-function logout(){localStorage.removeItem('user');location.reload();}
+function verifyCode(){
+confirmationResult.confirm(document.getElementById('code').value)
+.then(res=>{
+user=res.user;
+init();
+});
+}
 
 function init(){
 document.getElementById('auth').classList.add('hidden');
-document.getElementById('select').classList.remove('hidden');
+document.getElementById('main').classList.remove('hidden');
+
 navigator.geolocation.getCurrentPosition(p=>{
 pos={lat:p.coords.latitude,lng:p.coords.longitude};
 initMap();
-loadZmanim();
+listen();
 });
 }
 
@@ -83,13 +88,6 @@ function initMap(){
 map=L.map('map').setView([pos.lat,pos.lng],14);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 L.marker([pos.lat,pos.lng]).addTo(map);
-}
-
-function loadPrayer(p){
-currentPrayer=p;
-document.getElementById('select').classList.add('hidden');
-document.getElementById('main').classList.remove('hidden');
-listen();
 }
 
 function listen(){
@@ -101,72 +99,57 @@ const s=d.data();
 const dist=getDist(pos.lat,pos.lng,s.lat,s.lng);
 if(dist>5) return;
 
-html+=`<div class="bg-gray-50 p-3 rounded-xl mb-2">
+html+=`<div class="bg-blue-50 p-3 rounded-xl mb-2">
 <b>${s.name}</b>
-<div>${Math.round(dist*1000)} מטר</div>
-<div>${s.times?.[currentPrayer]||'אין זמן'}</div>
-<button onclick="editShul('${d.id}')" class="text-xs text-blue-500">ערוך</button>
-<button onclick="deleteShul('${d.id}')" class="text-xs text-red-500">מחק</button>
+<div>${s.address}</div>
+<div>שחרית: ${s.shacharit}</div>
+<div>מנחה: ${s.mincha}</div>
+<div>ערבית: ${s.arvit}</div>
+<button onclick="createMinyan('${d.id}','שחרית')">+ שחרית</button>
+<button onclick="createMinyan('${d.id}','מנחה')">+ מנחה</button>
+<button onclick="createMinyan('${d.id}','ערבית')">+ ערבית</button>
 </div>`;
 });
 
-// מניינים
- db.collection('minyanim').where('prayer','==',currentPrayer).onSnapshot(msnap=>{
- msnap.forEach(doc=>{
- const m=doc.data();
- const dist=getDist(pos.lat,pos.lng,m.lat,m.lng);
- if(dist>5) return;
-
- html+=`<div class="bg-blue-50 p-3 rounded-xl mb-2">
- מניין (${m.people.length}/10)
- <button onclick="join('${doc.id}')" class="text-xs bg-blue-500 text-white px-2">הצטרף</button>
- </div>`;
-
- if(m.people.length==9) notify('🔥 חסר אחד לעשירי');
- });
-
- document.getElementById('list').innerHTML=html||'אין כלום באזור';
- });
+document.getElementById('list').innerHTML=html||'אין בתי כנסת';
 });
 }
 
-function addShul(){
-const name=prompt('שם בית כנסת');
-const time=prompt('זמן '+currentPrayer);
-if(!name) return;
+function openModal(){document.getElementById('modal').classList.remove('hidden');}
+function closeModal(){document.getElementById('modal').classList.add('hidden');}
 
-db.collection('shuls').add({name,lat:pos.lat,lng:pos.lng,times:{[currentPrayer]:time}});
+async function saveShul(){
+const address=document.getElementById('address').value;
+if(!address) return alert('חייב כתובת');
+
+// שימוש ב־Nominatim (תחליף לגוגל בסיסי)
+const res=await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${address}`);
+const data=await res.json();
+if(!data.length) return alert('כתובת לא נמצאה');
+
+const lat=parseFloat(data[0].lat);
+const lng=parseFloat(data[0].lon);
+
+await db.collection('shuls').add({
+name:document.getElementById('shulName').value,
+address,
+lat,lng,
+shacharit:document.getElementById('shacharit').value,
+mincha:document.getElementById('mincha').value,
+arvit:document.getElementById('arvit').value
+});
+
+closeModal();
 }
 
-function editShul(id){
-const time=prompt('עדכן זמן');
-db.collection('shuls').doc(id).update({[`times.${currentPrayer}`]:time});
-}
-
-function deleteShul(id){
-db.collection('shuls').doc(id).delete();
-}
-
-function createMinyan(){
-if(!currentPrayer) return alert('בחר תפילה קודם');
-
+function createMinyan(shulId,prayer){
 db.collection('minyanim').add({
-lat:pos.lat,lng:pos.lng,
-prayer:currentPrayer,
-people:[user.name],
+shulId,
+prayer,
+people:[user.uid],
 createdAt:Date.now()
 });
-}
-
-function join(id){
-db.collection('minyanim').doc(id).get().then(doc=>{
-const m=doc.data();
-if(m.people.includes(user.name)||m.people.length>=10) return;
-
-db.collection('minyanim').doc(id).update({
-people:firebase.firestore.FieldValue.arrayUnion(user.name)
-});
-});
+push('נפתח מניין חדש');
 }
 
 function getDist(lat1,lon1,lat2,lon2){
@@ -177,37 +160,11 @@ const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180
 return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
 
-async function loadZmanim(){
-const res=await fetch(`https://www.hebcal.com/zmanim?cfg=json&latitude=${pos.lat}&longitude=${pos.lng}`);
-const data=await res.json();
-zmanim=data.times;
-
-const zEl=document.getElementById('zmanim');
-zEl.innerHTML=Object.entries(zmanim).map(([k,v])=>`<div>${k}: ${new Date(v).toLocaleTimeString('he-IL')}</div>`).join('');
-
-setInterval(updateTimer,1000);
-}
-
-function updateTimer(){
-const now=new Date();
-const next=Object.entries(zmanim).map(([k,v])=>({k,t:new Date(v)})).find(z=>z.t>now);
-if(!next) return;
-const diff=next.t-now;
-const m=Math.floor(diff/60000);
-const s=Math.floor((diff%60000)/1000);
-document.getElementById('timerLabel').innerText=next.k;
-document.getElementById('timer').innerText=`${m}:${s.toString().padStart(2,'0')}`;
-}
-
-function toggleZmanim(){
-document.getElementById('zmanim').classList.toggle('hidden');
-}
-
-function notify(t){
-if(Notification.permission==='granted') new Notification(t);
+// PUSH אמיתי (Service Worker חובה)
+function push(msg){
+if(Notification.permission==='granted') new Notification(msg);
 else Notification.requestPermission();
 }
 
 </script>
 </body>
-</html>
