@@ -8,7 +8,6 @@
 <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_API_KEY&libraries=places"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 </head>
@@ -16,16 +15,15 @@
 
 <div class="max-w-md mx-auto min-h-screen flex flex-col">
 
-<header class="bg-white/80 backdrop-blur p-4 text-center shadow-lg rounded-b-3xl">
+<header class="bg-white/80 backdrop-blur p-4 text-center shadow-lg rounded-b-3xl flex justify-between items-center">
 <h1 class="text-3xl font-black text-blue-500">מנין.</h1>
+<button onclick="logout()" class="text-xs text-gray-500">יציאה</button>
 </header>
 
 <section id="auth" class="p-5 space-y-3">
+<input id="name" placeholder="שם" class="p-3 border w-full rounded-2xl" />
 <input id="phone" placeholder="טלפון" class="p-3 border w-full rounded-2xl" />
-<div id="recaptcha"></div>
-<button onclick="sendCode()" class="bg-blue-500 text-white p-3 w-full rounded-2xl">שלח קוד</button>
-<input id="code" placeholder="קוד" class="p-3 border w-full rounded-2xl" />
-<button onclick="verifyCode()" class="bg-green-500 text-white p-3 w-full rounded-2xl">כניסה</button>
+<button onclick="login()" class="bg-blue-500 text-white p-3 w-full rounded-2xl">כניסה</button>
 </section>
 
 <section id="main" class="hidden flex-1 p-3 space-y-3">
@@ -48,23 +46,28 @@
 </div>
 
 <script>
-const firebaseConfig={apiKey:"AIza...",authDomain:"munyan-3d2dc.firebaseapp.com",projectId:"munyan-3d2dc"};
+const firebaseConfig={apiKey:"AIza...",projectId:"munyan-3d2dc"};
 firebase.initializeApp(firebaseConfig);
 const db=firebase.firestore();
-const auth=firebase.auth();
 
-let user,pos,map,autocomplete,selectedPlace;
+let user=JSON.parse(localStorage.getItem('user'))||null;
+let pos,map,autocomplete,selectedPlace;
 
-window.recaptchaVerifier=new firebase.auth.RecaptchaVerifier('recaptcha');
+if(user) init();
 
-function sendCode(){
-auth.signInWithPhoneNumber(document.getElementById('phone').value,window.recaptchaVerifier)
-.then(r=>window.confirmationResult=r);
+function login(){
+const name=document.getElementById('name').value;
+const phone=document.getElementById('phone').value;
+if(!name||!phone) return alert('מלא פרטים');
+
+user={name,phone};
+localStorage.setItem('user',JSON.stringify(user));
+init();
 }
 
-function verifyCode(){
-confirmationResult.confirm(document.getElementById('code').value)
-.then(res=>{user=res.user;init();});
+function logout(){
+localStorage.removeItem('user');
+location.reload();
 }
 
 function init(){
