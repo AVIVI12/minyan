@@ -26,13 +26,14 @@
 <button onclick="login()" class="bg-blue-500 text-white p-3 w-full rounded-2xl">כניסה</button>
 </section>
 
-<section id="main" class="hidden flex-1 p-3 space-y-3">
+<section id="main" class="hidden flex-1 p-3 space-y-3 overflow-y-auto">
 <div id="map" class="h-44 rounded-3xl shadow"></div>
-<div id="list" class="space-y-3"></div>
+<div id="list" class="space-y-4"></div>
 </section>
 
 <button onclick="openModal()" class="fixed bottom-6 right-6 bg-gradient-to-r from-blue-500 to-indigo-500 text-white w-16 h-16 rounded-full text-3xl shadow-2xl">+</button>
 
+<!-- MODAL ADD SHUL -->
 <div id="modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center">
 <div class="bg-white p-5 rounded-3xl w-80 space-y-3 shadow-2xl">
 <input id="shulName" placeholder="שם בית כנסת" class="p-3 border w-full rounded-xl" />
@@ -59,26 +60,18 @@ function login(){
 const name=document.getElementById('name').value;
 const phone=document.getElementById('phone').value;
 if(!name||!phone) return alert('מלא פרטים');
-
 user={name,phone};
 localStorage.setItem('user',JSON.stringify(user));
 init();
 }
 
-function logout(){
-localStorage.removeItem('user');
-location.reload();
-}
+function logout(){localStorage.removeItem('user');location.reload();}
 
 function init(){
 document.getElementById('auth').classList.add('hidden');
 document.getElementById('main').classList.remove('hidden');
-
 navigator.geolocation.getCurrentPosition(p=>{
-pos={lat:p.coords.latitude,lng:p.coords.longitude};
-initMap();
-listen();
-});
+pos={lat:p.coords.latitude,lng:p.coords.longitude};initMap();listen();});
 }
 
 function initMap(){
@@ -93,39 +86,91 @@ let html='';
 
 snap.forEach(d=>{
 const s=d.data();
-html+=`<div class="bg-white p-4 rounded-3xl shadow">
+html+=`<div class="bg-white p-4 rounded-3xl shadow space-y-2">
 <div class="font-bold text-lg">${s.name}</div>
 <div class="text-xs text-gray-400">${s.address}</div>
-<div class="text-sm">שחרית: ${s.shacharit}</div>
-<div class="text-sm">מנחה: ${s.mincha}</div>
-<div class="text-sm">ערבית: ${s.arvit}</div>
+<div class="grid grid-cols-3 gap-1 text-xs">
+<button onclick="createMinyan('${d.id}','שחרית')" class="bg-blue-50 rounded p-1">שחרית</button>
+<button onclick="createMinyan('${d.id}','מנחה')" class="bg-blue-50 rounded p-1">מנחה</button>
+<button onclick="createMinyan('${d.id}','ערבית')" class="bg-blue-50 rounded p-1">ערבית</button>
+</div>
+<div id="minyan-${d.id}"></div>
 </div>`;
+
+// load minyanim per shul
+loadMinyanim(d.id);
 });
 
- document.getElementById('list').innerHTML=html||'<div class="text-center text-gray-400">אין נתונים</div>';
+document.getElementById('list').innerHTML=html||'<div class="text-center text-gray-400">אין נתונים</div>';
 });
 }
 
-function openModal(){
-document.getElementById('modal').classList.remove('hidden');
-initAutocomplete();
+function loadMinyanim(shulId){
+db.collection('minyanim').where('shulId','==',shulId)
+.onSnapshot(snap=>{
+let html='';
+snap.forEach(doc=>{
+const m=doc.data();
+const joined=m.people.some(p=>p.phone===user.phone);
+const full=m.people.length>=10;
+
+html+=`<div class="bg-indigo-50 p-3 rounded-xl mt-2">
+<div class="flex justify-between items-center">
+<div class="font-bold">${m.prayer}</div>
+<div class="text-lg font-black">${m.people.length}/10</div>
+</div>
+
+<div class="mt-2 space-y-1 text-xs">
+${m.people.map(p=>`<div>👤 ${p.name}</div>`).join('')}
+</div>
+
+${full?'<div class="text-green-600 font-bold mt-2">המניין הושלם 🎉</div>':
+joined?'<div class="text-gray-400 mt-2">כבר הצטרפת</div>':
+`<button onclick="joinMinyan('${doc.id}')" class="w-full bg-blue-500 text-white mt-2 p-2 rounded">הצטרף</button>`}
+
+</div>`;
+
+if(m.people.length===9) notify('🔥 חסר אחד לעשירי');
+});
+
+document.getElementById('minyan-'+shulId).innerHTML=html;
+});
 }
 
-function closeModal(){
-document.getElementById('modal').classList.add('hidden');
+function createMinyan(shulId,prayer){
+db.collection('minyanim').add({
+shulId,prayer,
+people:[user],
+createdAt:Date.now()
+});
 }
+
+function joinMinyan(id){
+db.collection('minyanim').doc(id).get().then(doc=>{
+const m=doc.data();
+if(m.people.find(p=>p.phone===user.phone)||m.people.length>=10) return;
+
+db.collection('minyanim').doc(id).update({
+people:firebase.firestore.FieldValue.arrayUnion(user)
+});
+});
+}
+
+function notify(msg){
+if(Notification.permission==='granted') new Notification(msg);
+else Notification.requestPermission();
+}
+
+function openModal(){document.getElementById('modal').classList.remove('hidden');initAutocomplete();}
+function closeModal(){document.getElementById('modal').classList.add('hidden');}
 
 function initAutocomplete(){
-const input=document.getElementById('address');
-autocomplete=new google.maps.places.Autocomplete(input);
-autocomplete.addListener('place_changed',()=>{
-selectedPlace=autocomplete.getPlace();
-});
+autocomplete=new google.maps.places.Autocomplete(document.getElementById('address'));
+autocomplete.addListener('place_changed',()=>{selectedPlace=autocomplete.getPlace();});
 }
 
 async function saveShul(){
 if(!selectedPlace) return alert('בחר כתובת מהרשימה');
-
 const loc=selectedPlace.geometry.location;
 
 await db.collection('shuls').add({
