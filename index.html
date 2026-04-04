@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>MinyanLive PRO+</title>
+<title>מנין.</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
@@ -11,190 +11,162 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 </head>
-<body class="bg-gray-100">
-<div class="max-w-md mx-auto bg-white min-h-screen flex flex-col">
+<body class="bg-gray-100 font-sans">
+<div class="max-w-md mx-auto bg-white min-h-screen flex flex-col rounded-3xl shadow-xl overflow-hidden">
 
-<header class="bg-black text-white p-3 flex justify-between">
-<div>
-<b>MinyanLive PRO+</b>
-<div id="clock" class="text-xs"></div>
-</div>
-<div id="loc" class="text-xs">טוען...</div>
+<header class="p-4 bg-white shadow flex justify-between items-center">
+<h1 class="text-2xl font-black">מנין.</h1>
+<button onclick="logout()" class="text-xs text-gray-500">יציאה</button>
 </header>
 
-<section id="auth" class="screen active p-6 space-y-3">
-<input id="phone" placeholder="טלפון" class="p-3 border w-full" />
-<div id="recaptcha"></div>
-<button onclick="sendCode()" class="bg-blue-600 text-white p-3 w-full">שלח קוד</button>
-<input id="code" placeholder="קוד SMS" class="p-3 border w-full" />
-<button onclick="verifyCode()" class="bg-green-600 text-white p-3 w-full">אימות</button>
+<section id="auth" class="p-6 space-y-3">
+<input id="name" placeholder="שם" class="p-3 border w-full rounded-xl" />
+<input id="phone" placeholder="טלפון" class="p-3 border w-full rounded-xl" />
+<button onclick="login()" class="bg-blue-500 text-white p-3 w-full rounded-xl">התחברות</button>
 </section>
 
-<section id="main" class="screen p-3 space-y-3">
-<div id="map" style="height:180px"></div>
-<button onclick="createMinyan()" class="bg-green-600 text-white p-2">פתח מניין</button>
+<section id="select" class="hidden p-4 space-y-3">
+<h2 class="font-bold">בחר תפילה</h2>
+<button onclick="loadPrayer('שחרית')" class="w-full p-3 bg-gray-100 rounded-xl">שחרית</button>
+<button onclick="loadPrayer('מנחה')" class="w-full p-3 bg-gray-100 rounded-xl">מנחה</button>
+<button onclick="loadPrayer('ערבית')" class="w-full p-3 bg-gray-100 rounded-xl">ערבית</button>
+</section>
+
+<section id="main" class="hidden p-3 space-y-3 flex-1 overflow-y-auto">
+<div id="map" style="height:150px" class="rounded-2xl"></div>
+<button onclick="addShul()" class="bg-green-500 text-white p-2 rounded-xl">+ הוסף בית כנסת</button>
+<button onclick="createMinyan()" class="bg-blue-500 text-white p-2 rounded-xl">+ פתח מניין</button>
 <div id="list"></div>
+
+<div class="bg-black text-white p-3 rounded-2xl text-center">
+<div id="timerLabel" class="text-xs"></div>
+<div id="timer" class="text-2xl font-mono"></div>
+</div>
 </section>
 
 </div>
 
 <script>
-const firebaseConfig={apiKey:"AIza...",authDomain:"munyan-3d2dc.firebaseapp.com",projectId:"munyan-3d2dc"};
+const firebaseConfig={apiKey:"AIza...",projectId:"munyan-3d2dc"};
 firebase.initializeApp(firebaseConfig);
 const db=firebase.firestore();
-const auth=firebase.auth();
 
-let user=null,pos=null,map,userMarker;
+let user=JSON.parse(localStorage.getItem('user'))||null;
+let pos=null,currentPrayer=null,map;
 
-setInterval(()=>{
-document.getElementById('clock').innerText=new Date().toLocaleTimeString('he-IL');
-},1000);
+if(user) init();
 
-window.recaptchaVerifier=new firebase.auth.RecaptchaVerifier('recaptcha');
-
-function sendCode(){
+function login(){
+const name=document.getElementById('name').value;
 const phone=document.getElementById('phone').value;
-auth.signInWithPhoneNumber(phone,window.recaptchaVerifier)
-.then(res=>window.confirmationResult=res);
+user={name,phone};
+localStorage.setItem('user',JSON.stringify(user));
+init();
 }
 
-function verifyCode(){
-const code=document.getElementById('code').value;
-confirmationResult.confirm(code).then(res=>{
-user=res.user;
-init();
-});
+function logout(){
+localStorage.removeItem('user');
+location.reload();
 }
 
 function init(){
+document.getElementById('auth').classList.add('hidden');
+document.getElementById('select').classList.remove('hidden');
 navigator.geolocation.getCurrentPosition(p=>{
 pos={lat:p.coords.latitude,lng:p.coords.longitude};
-document.getElementById('loc').innerText='📍 נמצא';
-show('main');
 initMap();
-listen();
-startGeoUpdates();
+loadZmanim();
 });
-}
-
-function startGeoUpdates(){
-setInterval(()=>{
-navigator.geolocation.getCurrentPosition(p=>{
-pos={lat:p.coords.latitude,lng:p.coords.longitude};
-updateMarker();
-});
-},30000);
 }
 
 function initMap(){
-map=L.map('map').setView([pos.lat,pos.lng],15);
+map=L.map('map').setView([pos.lat,pos.lng],14);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-userMarker=L.marker([pos.lat,pos.lng]).addTo(map);
+L.marker([pos.lat,pos.lng]).addTo(map);
 }
 
-function updateMarker(){
-if(userMarker) map.removeLayer(userMarker);
-userMarker=L.marker([pos.lat,pos.lng]).addTo(map);
+function loadPrayer(p){
+currentPrayer=p;
+document.getElementById('select').classList.add('hidden');
+document.getElementById('main').classList.remove('hidden');
+listen();
 }
 
-function show(id){
-document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
-document.getElementById(id).classList.add('active');
+function listen(){
+db.collection('shuls').onSnapshot(snap=>{
+let html='';
+snap.forEach(d=>{
+const s=d.data();
+const dist=getDist(pos.lat,pos.lng,s.lat,s.lng);
+if(dist>5) return;
+html+=`<div class="bg-gray-50 p-3 rounded-xl mb-2">
+<b>${s.name}</b>
+<div>${Math.round(dist*1000)} מטר</div>
+<div>${s.times?.[currentPrayer]||'אין זמן'}</div>
+</div>`;
+});
+
+// מניינים
+snap.forEach(d=>{
+const m=d.data();
+});
+
+document.getElementById('list').innerHTML=html||'אין בתי כנסת באזור';
+});
 }
 
-async function createMinyan(){
-const snap=await db.collection('minyanim').where('uid','==',user.uid).get();
-if(!snap.empty) return alert('כבר פתחת מניין');
+function addShul(){
+const name=prompt('שם בית כנסת');
+const time=prompt('זמן '+currentPrayer);
+if(!name) return;
 
-const place=await getPlaceName();
+db.collection('shuls').add({
+name,
+lat:pos.lat,
+lng:pos.lng,
+times:{[currentPrayer]:time}
+});
+}
 
-await db.collection('minyanim').add({
-uid:user.uid,
+function createMinyan(){
+db.collection('minyanim').add({
 lat:pos.lat,lng:pos.lng,
-place,
-participants:[user.uid],
+prayer:currentPrayer,
+people:[user.name],
 createdAt:Date.now()
 });
 }
 
-function listen(){
-db.collection('minyanim').onSnapshot(snap=>{
-let arr=[];
-snap.forEach(d=>arr.push({id:d.id,...d.data()}));
-arr=smartSort(arr);
-render(arr);
-});
-}
-
-function smartSort(arr){
-return arr.sort((a,b)=>score(a)-score(b));
-}
-
-function score(m){
-const d=distance(m);
-const people=m.participants.length;
-return d*2 - people*0.5;
-}
-
-function render(arr){
-const el=document.getElementById('list');
-el.innerHTML='';
-
-let found=false;
-
-arr.forEach(m=>{
-const d=distance(m);
-if(d>10) return;
-found=true;
-
-const full=m.participants.length>=10;
-const txt=full?'מלא':'הצטרף';
-
-el.innerHTML+=`<div class="border p-3">
-<div>${m.place}</div>
-<div>${Math.round(d*1000)} מטר</div>
-<div>${m.participants.length}/10</div>
-<button onclick="join('${m.id}')" ${full?'disabled':''} class="bg-blue-600 text-white p-2">${txt}</button>
-</div>`;
-
-if(m.participants.length==9) push('🔥 חסר אחד!');
-});
-
-if(!found) el.innerHTML='<div>אין מניינים קרובים 😕</div>';
-}
-
-function join(id){
-db.collection('minyanim').doc(id).get().then(doc=>{
-const m=doc.data();
-if(m.participants.includes(user.uid)) return;
-if(m.participants.length>=10) return;
-
-db.collection('minyanim').doc(id).update({
-participants:firebase.firestore.FieldValue.arrayUnion(user.uid)
-});
-});
-}
-
-function distance(m){
+function getDist(lat1,lon1,lat2,lon2){
 const R=6371;
-const dLat=(m.lat-pos.lat)*Math.PI/180;
-const dLon=(m.lng-pos.lng)*Math.PI/180;
-const a=Math.sin(dLat/2)**2+Math.cos(pos.lat*Math.PI/180)*Math.cos(m.lat*Math.PI/180)*Math.sin(dLon/2)**2;
+const dLat=(lat2-lat1)*Math.PI/180;
+const dLon=(lon2-lon1)*Math.PI/180;
+const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
 return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
 
-async function getPlaceName(){
-try{
-const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${pos.lat}&lon=${pos.lng}`);
-const d=await r.json();
-return d.name||d.display_name;
-}catch{return 'מיקום';}
+// זמנים
+let zmanim;
+async function loadZmanim(){
+const res=await fetch(`https://www.hebcal.com/zmanim?cfg=json&latitude=${pos.lat}&longitude=${pos.lng}`);
+const data=await res.json();
+zmanim=data.times;
+setInterval(updateTimer,1000);
 }
 
-// REAL PUSH (service worker required separately)
-function push(msg){
-if(Notification.permission==='granted') new Notification(msg);
-else Notification.requestPermission();
+function updateTimer(){
+const now=new Date();
+const list=[
+{n:'שקיעה',t:new Date(zmanim.sunset)},
+{n:'צאת',t:new Date(zmanim.tzeit7085deg)}
+];
+const next=list.find(z=>z.t>now);
+if(!next) return;
+const diff=next.t-now;
+const m=Math.floor(diff/60000);
+const s=Math.floor((diff%60000)/1000);
+document.getElementById('timerLabel').innerText=next.n;
+document.getElementById('timer').innerText=`${m}:${s.toString().padStart(2,'0')}`;
 }
 
 </script>
