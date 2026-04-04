@@ -1,190 +1,225 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>מנין.</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gemini Chat Pro – Fixed Models</title>
 <script src="https://cdn.tailwindcss.com"></script>
-<script src="https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_API_KEY&libraries=places"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
-<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+<style>
+::-webkit-scrollbar { width:6px }
+::-webkit-scrollbar-thumb { background:#444; border-radius:10px }
+.bubble p { margin-bottom: 0.5rem; }
+.bubble p:last-child { margin-bottom: 0; }
+.bubble { white-space: pre-wrap; }
+</style>
 </head>
-<body class="bg-gradient-to-br from-blue-100 via-white to-indigo-100 font-sans">
 
-<div class="max-w-md mx-auto min-h-screen flex flex-col">
+<body class="bg-[#0f0f0f] text-white h-screen flex flex-col">
 
-<header class="bg-white/80 backdrop-blur p-4 text-center shadow-lg rounded-b-3xl flex justify-between items-center">
-<h1 class="text-3xl font-black text-blue-500">מנין.</h1>
-<button onclick="logout()" class="text-xs text-gray-500">יציאה</button>
+<header class="p-4 border-b border-gray-800 flex flex-col gap-2 bg-[#111]">
+<h1 class="font-bold text-lg">Gemini Chat Pro ✨</h1>
+
+<div class="flex gap-2 items-center flex-wrap">
+<input id="apiKey" type="password" placeholder="הכנס API Key"
+class="bg-gray-900 border border-gray-800 rounded px-3 py-2 text-xs w-40">
+
+<input id="proxyServer" type="text" placeholder="Proxy URL (אופציונלי)"
+class="bg-gray-900 border border-gray-800 rounded px-2 py-2 text-xs w-64">
+
+<select id="model" class="bg-gray-900 border border-gray-800 rounded px-3 py-2 text-xs w-64">
+  <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+  <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
+  <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+  <option value="gemini-2.0-flash-lite">Gemini 2.0 Flash Lite</option>
+  <option value="gemini-1.5-flash-latest">Gemini 1.5 Flash Latest</option>
+  <option value="gemini-1.5-flash-8b-latest">Gemini 1.5 Flash 8B Latest</option>
+</select>
+
+<button id="newChat" class="bg-blue-600 text-white px-3 py-2 rounded-xl text-xs hover:opacity-90 transition">שיחה חדשה</button>
+</div>
+
+<div id="chatHistory" class="flex gap-2 overflow-x-auto mt-2"></div>
 </header>
 
-<section id="auth" class="p-5 space-y-3">
-<input id="name" placeholder="שם" class="p-3 border w-full rounded-2xl" />
-<input id="phone" placeholder="טלפון" class="p-3 border w-full rounded-2xl" />
-<button onclick="login()" class="bg-blue-500 text-white p-3 w-full rounded-2xl">כניסה</button>
-</section>
+<main id="chat" class="flex-1 overflow-y-auto p-6 space-y-4 flex flex-col"></main>
 
-<section id="main" class="hidden flex-1 p-3 space-y-3 overflow-y-auto">
-<div id="map" class="h-44 rounded-3xl shadow"></div>
-<div id="list" class="space-y-4"></div>
-</section>
+<footer class="p-4 border-t border-gray-800 flex gap-2 bg-[#111]">
+<textarea id="input" rows="1" placeholder="כתוב הודעה... (Shift+Enter לשורה חדשה)"
+class="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none resize-none overflow-y-auto max-h-32"></textarea>
 
-<button onclick="openModal()" class="fixed bottom-6 right-6 bg-gradient-to-r from-blue-500 to-indigo-500 text-white w-16 h-16 rounded-full text-3xl shadow-2xl">+</button>
-
-<!-- MODAL ADD SHUL -->
-<div id="modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center">
-<div class="bg-white p-5 rounded-3xl w-80 space-y-3 shadow-2xl">
-<input id="shulName" placeholder="שם בית כנסת" class="p-3 border w-full rounded-xl" />
-<input id="address" placeholder="חפש כתובת" class="p-3 border w-full rounded-xl" />
-<input id="shacharit" placeholder="שחרית" class="p-2 border w-full rounded-xl" />
-<input id="mincha" placeholder="מנחה" class="p-2 border w-full rounded-xl" />
-<input id="arvit" placeholder="ערבית" class="p-2 border w-full rounded-xl" />
-<button onclick="saveShul()" class="bg-blue-500 text-white w-full p-3 rounded-xl">שמור</button>
-<button onclick="closeModal()" class="text-gray-400 w-full">ביטול</button>
-</div>
-</div>
+<button onclick="sendMessage()"
+class="bg-white text-black px-5 py-3 rounded-xl font-semibold hover:opacity-90 transition self-end">
+שלח
+</button>
+</footer>
 
 <script>
-const firebaseConfig={apiKey:"AIza...",projectId:"munyan-3d2dc"};
-firebase.initializeApp(firebaseConfig);
-const db=firebase.firestore();
+let state = {
+  chats: JSON.parse(localStorage.getItem("gemini_chats") || "{}"),
+  currentChatId: null
+};
 
-let user=JSON.parse(localStorage.getItem('user'))||null;
-let pos,map,autocomplete,selectedPlace;
+const chatEl = document.getElementById("chat");
+const inputEl = document.getElementById("input");
+const historyEl = document.getElementById("chatHistory");
+const proxyInput = document.getElementById("proxyServer");
+const apiInput = document.getElementById("apiKey");
+const modelSelect = document.getElementById("model");
 
-if(user) init();
-
-function login(){
-const name=document.getElementById('name').value;
-const phone=document.getElementById('phone').value;
-if(!name||!phone) return alert('מלא פרטים');
-user={name,phone};
-localStorage.setItem('user',JSON.stringify(user));
-init();
+function saveState() {
+  localStorage.setItem("gemini_chats", JSON.stringify(state.chats));
 }
 
-function logout(){localStorage.removeItem('user');location.reload();}
+function addMessage(role, text) {
+  const wrapper = document.createElement("div");
+  wrapper.className = role === "user" ? "flex justify-end" : "flex justify-start";
 
-function init(){
-document.getElementById('auth').classList.add('hidden');
-document.getElementById('main').classList.remove('hidden');
-navigator.geolocation.getCurrentPosition(p=>{
-pos={lat:p.coords.latitude,lng:p.coords.longitude};initMap();listen();});
+  const bubble = document.createElement("div");
+  bubble.className =
+    role === "user"
+      ? "bg-blue-600 px-4 py-3 rounded-2xl max-w-[85%] shadow-lg bubble"
+      : "bg-gray-800 border border-gray-700 px-4 py-3 rounded-2xl max-w-[85%] shadow-lg bubble";
+
+  bubble.innerHTML = DOMPurify.sanitize(marked.parse(text));
+  wrapper.appendChild(bubble);
+  chatEl.appendChild(wrapper);
+  chatEl.scrollTop = chatEl.scrollHeight;
 }
 
-function initMap(){
-map=L.map('map').setView([pos.lat,pos.lng],14);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-L.marker([pos.lat,pos.lng]).addTo(map);
+function renderChat() {
+  chatEl.innerHTML = "";
+  (state.chats[state.currentChatId] || []).forEach(m => addMessage(m.role, m.content));
 }
 
-function listen(){
-db.collection('shuls').onSnapshot(snap=>{
-let html='';
+function renderHistory() {
+  historyEl.innerHTML = "";
 
-snap.forEach(d=>{
-const s=d.data();
-html+=`<div class="bg-white p-4 rounded-3xl shadow space-y-2">
-<div class="font-bold text-lg">${s.name}</div>
-<div class="text-xs text-gray-400">${s.address}</div>
-<div class="grid grid-cols-3 gap-1 text-xs">
-<button onclick="createMinyan('${d.id}','שחרית')" class="bg-blue-50 rounded p-1">שחרית</button>
-<button onclick="createMinyan('${d.id}','מנחה')" class="bg-blue-50 rounded p-1">מנחה</button>
-<button onclick="createMinyan('${d.id}','ערבית')" class="bg-blue-50 rounded p-1">ערבית</button>
-</div>
-<div id="minyan-${d.id}"></div>
-</div>`;
+  Object.keys(state.chats)
+    .sort((a, b) => Number(b) - Number(a))
+    .forEach(id => {
+      const btn = document.createElement("button");
+      btn.className = "bg-gray-800 px-3 py-1 rounded text-xs hover:bg-gray-700";
+      btn.textContent = (state.chats[id][0]?.content || "שיחה חדשה").substring(0, 20);
 
-// load minyanim per shul
-loadMinyanim(d.id);
+      btn.onclick = () => {
+        state.currentChatId = id;
+        renderChat();
+        renderHistory();
+      };
+
+      if (id === state.currentChatId) {
+        btn.classList.add("ring-2", "ring-blue-500");
+      }
+
+      historyEl.appendChild(btn);
+    });
+}
+
+async function sendMessage() {
+  const text = inputEl.value.trim();
+  const key = apiInput.value.trim();
+  const proxy = proxyInput.value.trim();
+  const model = modelSelect.value;
+
+  if (!text || !key || !model) return alert("יש למלא API Key, טקסט ובחירת מודל");
+
+  if (!state.currentChatId) {
+    const id = Date.now().toString();
+    state.chats[id] = [];
+    state.currentChatId = id;
+  }
+
+  state.chats[state.currentChatId].push({ role: "user", content: text });
+  renderChat();
+
+  inputEl.value = "";
+  inputEl.style.height = "auto";
+
+  state.chats[state.currentChatId].push({ role: "model", content: "⏳ חושב..." });
+  renderChat();
+
+  const contents = state.chats[state.currentChatId]
+    .filter(m => m.content !== "⏳ חושב...")
+    .map(m => ({
+      role: m.role === "user" ? "user" : "model",
+      parts: [{ text: m.content }]
+    }));
+
+  const payload = { contents };
+
+  try {
+    let url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+    if (proxy) url = proxy + encodeURIComponent(url);
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) throw new Error("HTTP " + res.status);
+
+    const data = await res.json();
+    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "❌ לא התקבלה תגובה";
+
+    const chat = state.chats[state.currentChatId];
+    const idx = chat.findLastIndex(m => m.content === "⏳ חושב...");
+    if (idx !== -1) chat.splice(idx, 1);
+
+    chat.push({ role: "model", content: reply });
+
+    renderChat();
+    saveState();
+    renderHistory();
+
+  } catch (err) {
+    console.error(err);
+
+    const chat = state.chats[state.currentChatId];
+    const idx = chat.findLastIndex(m => m.content === "⏳ חושב...");
+    if (idx !== -1) chat.splice(idx, 1);
+
+    addMessage("model", "❌ שליחת הבקשה נכשלה. ייתכן ש-CORS חסום אם אין Proxy.");
+  }
+}
+
+document.getElementById("newChat").onclick = () => {
+  const id = Date.now().toString();
+  state.chats[id] = [];
+  state.currentChatId = id;
+  saveState();
+  renderChat();
+  renderHistory();
+};
+
+inputEl.addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
 });
 
-document.getElementById('list').innerHTML=html||'<div class="text-center text-gray-400">אין נתונים</div>';
-});
-}
+inputEl.oninput = function () {
+  this.style.height = "auto";
+  this.style.height = this.scrollHeight + "px";
+};
 
-function loadMinyanim(shulId){
-db.collection('minyanim').where('shulId','==',shulId)
-.onSnapshot(snap=>{
-let html='';
-snap.forEach(doc=>{
-const m=doc.data();
-const joined=m.people.some(p=>p.phone===user.phone);
-const full=m.people.length>=10;
+(function init() {
+  const ids = Object.keys(state.chats);
+  state.currentChatId = ids.length ? ids[ids.length - 1] : null;
 
-html+=`<div class="bg-indigo-50 p-3 rounded-xl mt-2">
-<div class="flex justify-between items-center">
-<div class="font-bold">${m.prayer}</div>
-<div class="text-lg font-black">${m.people.length}/10</div>
-</div>
+  if (!state.currentChatId) {
+    const id = Date.now().toString();
+    state.chats[id] = [];
+    state.currentChatId = id;
+  }
 
-<div class="mt-2 space-y-1 text-xs">
-${m.people.map(p=>`<div>👤 ${p.name}</div>`).join('')}
-</div>
-
-${full?'<div class="text-green-600 font-bold mt-2">המניין הושלם 🎉</div>':
-joined?'<div class="text-gray-400 mt-2">כבר הצטרפת</div>':
-`<button onclick="joinMinyan('${doc.id}')" class="w-full bg-blue-500 text-white mt-2 p-2 rounded">הצטרף</button>`}
-
-</div>`;
-
-if(m.people.length===9) notify('🔥 חסר אחד לעשירי');
-});
-
-document.getElementById('minyan-'+shulId).innerHTML=html;
-});
-}
-
-function createMinyan(shulId,prayer){
-db.collection('minyanim').add({
-shulId,prayer,
-people:[user],
-createdAt:Date.now()
-});
-}
-
-function joinMinyan(id){
-db.collection('minyanim').doc(id).get().then(doc=>{
-const m=doc.data();
-if(m.people.find(p=>p.phone===user.phone)||m.people.length>=10) return;
-
-db.collection('minyanim').doc(id).update({
-people:firebase.firestore.FieldValue.arrayUnion(user)
-});
-});
-}
-
-function notify(msg){
-if(Notification.permission==='granted') new Notification(msg);
-else Notification.requestPermission();
-}
-
-function openModal(){document.getElementById('modal').classList.remove('hidden');initAutocomplete();}
-function closeModal(){document.getElementById('modal').classList.add('hidden');}
-
-function initAutocomplete(){
-autocomplete=new google.maps.places.Autocomplete(document.getElementById('address'));
-autocomplete.addListener('place_changed',()=>{selectedPlace=autocomplete.getPlace();});
-}
-
-async function saveShul(){
-if(!selectedPlace) return alert('בחר כתובת מהרשימה');
-const loc=selectedPlace.geometry.location;
-
-await db.collection('shuls').add({
-name:document.getElementById('shulName').value,
-address:selectedPlace.formatted_address,
-lat:loc.lat(),
-lng:loc.lng(),
-shacharit:document.getElementById('shacharit').value,
-mincha:document.getElementById('mincha').value,
-arvit:document.getElementById('arvit').value
-});
-
-closeModal();
-}
+  renderChat();
+  renderHistory();
+})();
 </script>
+
 </body>
 </html>
